@@ -1,3 +1,5 @@
+logs/
+
 # Python dependencies and environments
 __pycache__/
 *.py[cod]

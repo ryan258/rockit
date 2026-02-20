@@ -1,9 +1,10 @@
 import os
 import json
-import zipfile
 import tempfile
+import zipfile
 import shutil
 import argparse
+import re
 from pathlib import Path
 
 def extract_bs_data(zip_path, temp_dir):
@@ -75,8 +76,11 @@ def convert_notes(bs_notes):
         # Direct 1:1 mapping!
         if 0 <= line_index <= 3:
             rr_notes.append({
-                "_time": float(time),
-                "_lineIndex": int(line_index)
+                "_time": round(float(time), 4),
+                "_lineIndex": int(line_index),
+                "_lineLayer": 1,
+                "_type": 0,
+                "_cutDirection": 1
             })
             
     return rr_notes
@@ -165,67 +169,63 @@ def package_rr_song(temp_dir, output_dir, bs_info, rr_notes):
         
     # the info.dat expects audio and cover to exist with same names, we'll keep the names.
     
-    # Create Ragnarock Info.dat
+    clean_song_name = bs_info.get("_songName", "Unknown Song")
+    for ext in [".ogg", ".mp3", ".wav"]:
+        clean_song_name = clean_song_name.replace(ext, "")
+    clean_song_name = clean_song_name.strip()
+    
+    # Create Ragnarock info.dat (Lowercase, Version 1.0.0 required)
     rr_info = {
-        "_version": "2.0.0",
-        "_songName": bs_info.get("_songName", "Unknown Song"),
+        "_version": "1.0.0",
+        "_explicit": "false",
+        "_songName": clean_song_name,
         "_songSubName": bs_info.get("_songSubName", ""),
         "_songAuthorName": bs_info.get("_songAuthorName", "Suno AI"),
-        "_levelAuthorName": bs_info.get("_levelAuthorName", "rr_converter"),
-        "_beatsPerMinute": bs_info.get("_beatsPerMinute", 120),
-        "_previewStartTime": bs_info.get("_previewStartTime", 12.0),
-        "_previewDuration": bs_info.get("_previewDuration", 10.0),
+        "_levelAuthorName": "ryanleej",
+        "_beatsPerMinute": int(bs_info.get("_beatsPerMinute", 120)),
+        "_shuffle": 0,
+        "_shufflePeriod": 0.5,
+        "_previewStartTime": int(bs_info.get("_previewStartTime", 12)),
+        "_previewDuration": int(bs_info.get("_previewDuration", 10)),
+        "_songApproximativeDuration": 300, # Approx fallback if not known
         "_songFilename": audio_file,
         "_coverImageFilename": cover_file,
         "_environmentName": "Midgard",
-        "_songTimeOffset": bs_info.get("_songTimeOffset", 0),
-        "_customData": {
-            "_contributors": [],
-            "_customEnvironment": "",
-            "_customEnvironmentHash": ""
-        },
+        "_songTimeOffset": 0,
         "_difficultyBeatmapSets": [
             {
                 "_beatmapCharacteristicName": "Standard",
                 "_difficultyBeatmaps": [
                     {
-                        "_difficulty": "Normal",
-                        "_difficultyRank": 3,
-                        "_beatmapFilename": "Level1.json",
-                        "_noteJumpMovementSpeed": 10,
-                        "_noteJumpStartBeatOffset": 0,
-                        "_customData": {
-                            "_difficultyLabel": "Converted",
-                            "_editorOffset": 0,
-                            "_editorOldOffset": 0,
-                            "_warnings": [],
-                            "_information": [],
-                            "_suggestions": [],
-                            "_requirements": []
-                        }
+                        "_difficulty": "ExpertPlus",
+                        "_difficultyRank": 7,
+                        "_beatmapFilename": "ExpertPlusStandard.dat",
+                        "_noteJumpMovementSpeed": 20,
+                        "_noteJumpStartBeatOffset": 0
                     }
                 ]
             }
         ]
     }
     
-    with open(os.path.join(output_dir, "Info.dat"), "w", encoding='utf-8') as f:
+    with open(os.path.join(output_dir, "info.dat"), "w", encoding='utf-8') as f:
         json.dump(rr_info, f, indent=2)
         
-    # Create Level1.json
+    # Create ExpertPlusStandard.dat
     level_data = {
-        "_version": "2.0.0",
+        "_version": "1.0.0",
+        "_customData": {
+            "_time": 0,
+            "_BPMChanges": [],
+            "_bookmarks": []
+        },
+        "_events": [],
         "_notes": rr_notes,
         "_obstacles": [],
-        "_events": [],
-        "_customData": {
-            "_time": 0.0,
-            "_bpmChanges": [],
-            "_bookmarks": []
-        }
+        "_waypoints": []
     }
     
-    with open(os.path.join(output_dir, "Level1.json"), "w", encoding='utf-8') as f:
+    with open(os.path.join(output_dir, "ExpertPlusStandard.dat"), "w", encoding='utf-8') as f:
         json.dump(level_data, f, separators=(',', ':')) # tighter json for notes
         
     print(f"Successfully packaged {rr_info.get('_songName')}!")
@@ -243,19 +243,26 @@ def main():
         print(f"Error: Could not find file {zip_path}")
         return
         
-    # Determine output folder name
-    base_name = os.path.splitext(os.path.basename(zip_path))[0]
-    
-    # Ensure the output directory is inside the 'output' folder in the project root
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    output_base_dir = os.path.join(project_root, "output")
-    os.makedirs(output_base_dir, exist_ok=True)
-    
-    output_dir = os.path.join(output_base_dir, f"{base_name}_Ragnarock")
-    
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
             bs_info, bs_notes, base_dir = extract_bs_data(zip_path, temp_dir)
+            
+            # Determine output folder name strictly as [song][artist][user] locally
+            song_name = bs_info.get("_songName", "Unknown")
+            for ext in [".ogg", ".mp3", ".wav"]:
+                song_name = song_name.replace(ext, "")
+            song_author = bs_info.get("_songAuthorName", "SunoAI")
+            level_author = "ryanleej"
+            
+            raw_folder_name = f"{song_name}{song_author}{level_author}"
+            safe_folder_name = re.sub(r'[^a-zA-Z0-9]', '', raw_folder_name).lower()
+            
+            # Ensure the output directory is inside the 'output' folder in the project root
+            project_root = os.path.dirname(os.path.abspath(__file__))
+            output_base_dir = os.path.join(project_root, "output")
+            os.makedirs(output_base_dir, exist_ok=True)
+            
+            output_dir = os.path.join(output_base_dir, safe_folder_name)
             
             raw_rr_notes = convert_notes(bs_notes)
             

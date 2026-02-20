@@ -13,8 +13,11 @@ During the conversion, Rockit heavily filters and cleans the AI-generated Beat S
 
 To convert a new song, follow these 3 steps:
 
-1. **(Manual)** Warp your original audio file (e.g., `demo.wav`) to a strictly fixed BPM using a DAW or Fadr, and export it as an `.ogg` file. _(Ragnarock requires `.ogg` format, and a static BPM is critical to prevent note drift)._
-2. **(Manual)** Upload the `.ogg` file to [Beat Sage](https://beatsage.com/) to automatically generate the Beat Saber AI beatmap. Download the resulting `.zip` file.
+1. **(Automated)** Run the audio warper on your raw Suno `.wav` or `.mp3` to mathematically lock the fluctuating tempo to a fixed BPM grid:
+   ```bash
+   ./warp.sh input/suno_song.wav output/locked_audio.mp3
+   ```
+2. **(Manual)** Upload the `output/locked_audio.mp3` file to [Beat Sage](https://beatsage.com/) to automatically generate the Beat Saber AI beatmap. Download the resulting `.zip` file.
 3. **(Automated)** Place the `.zip` file in the `input/` folder, and run the wrapper script:
 
 ```bash

@@ -1,0 +1,145 @@
+import argparse
+import os
+import subprocess
+import shutil
+
+import librosa
+import numpy as np
+import soundfile as sf
+import pyrubberband as pyrb
+
+def warp_audio(input_file, output_file, target_bpm=None):
+    # 1. Stem Separation with Demucs
+    print(f"[{input_file}] Step 1: Separating stems with Demucs to isolate drums...")
+    temp_dir = "temp_demucs"
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    # Run Demucs via subprocess
+    try:
+        subprocess.run(["demucs", input_file, "-o", temp_dir, "-n", "htdemucs"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Demucs failed: {e}")
+        return
+
+    # Find the drums.wav file
+    base_name = os.path.splitext(os.path.basename(input_file))[0]
+    drums_path = os.path.join(temp_dir, "htdemucs", base_name, "drums.wav")
+    
+    if not os.path.exists(drums_path):
+        print(f"Error: Drums stem not found at {drums_path}")
+        return
+        
+    # 2. Beat Detection with Librosa
+    print("Step 2: Detecting beats on isolated drums stem...")
+    y_drums, sr = librosa.load(drums_path, sr=None)
+    tempo, beat_frames = librosa.beat.beat_track(y=y_drums, sr=sr)
+    
+    tempo_val = float(np.mean(tempo))
+    if target_bpm is None:
+        target_bpm = round(tempo_val)
+        
+    print(f"  -> Detected Tempo: {tempo_val:.2f} BPM")
+    print(f"  -> Target Static BPM: {target_bpm}")
+    
+    beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+    
+    if len(beat_times) == 0:
+        print("Error: No beats detected in the track!")
+        return
+
+    # 3. Create Time Map for PyRubberband (In Audio Sample Frames)
+    print("Step 3: Calculating time map for strictly locked BPM grid...")
+    time_map = []
+    
+    # Load original audio in stereo early so we have sr_full and y_full length
+    print("Loading full audio track for stretching...")
+    y_full, sr_full = librosa.load(input_file, sr=None, mono=False)
+    
+    # PyRubberband expects shape (samples, channels)
+    if y_full.ndim == 2 and y_full.shape[0] < y_full.shape[1]:
+        y_full = y_full.T
+        
+    beat_samples = [int(round(t * sr_full)) for t in beat_times]
+    
+    if beat_samples[0] > 0:
+        time_map.append((0, 0))
+        
+    current_target_sample = beat_samples[0]
+    time_map.append((beat_samples[0], current_target_sample))
+    
+    beat_length_target_samples = int(round((60.0 / target_bpm) * sr_full))
+    beat_length_source_sec = 60.0 / tempo_val
+    
+    # Lock each detected beat to the mathematical grid in exact samples
+    for i in range(1, len(beat_times)):
+        source_sample = beat_samples[i]
+        delta_source_sec = beat_times[i] - beat_times[i-1]
+        
+        # Calculate how many beats this delta most likely represents
+        num_beats = round(delta_source_sec / beat_length_source_sec)
+        if num_beats < 1:
+            num_beats = 1 # Prevent 0 beat deltas if librosa makes a micro-mistake
+            
+        delta_target_samples = num_beats * beat_length_target_samples
+        current_target_sample += delta_target_samples
+        
+        time_map.append((source_sample, current_target_sample))
+        
+    # 4. Apply Time Map to Original Audio
+    print("Step 4: Applying Rubberband time-stretching to original audio...")
+    total_samples = len(y_full)
+    
+    # Add tail end to the time map to match strictly len(y_full) as required by pyrubberband
+    if total_samples > time_map[-1][0]:
+        tail_delta_samples = total_samples - time_map[-1][0]
+        ratio = beat_length_target_samples / (beat_length_source_sec * sr_full)
+        tail_target_delta = int(round(tail_delta_samples * ratio))
+        time_map.append((total_samples, time_map[-1][1] + tail_target_delta))
+    elif total_samples < time_map[-1][0]:
+        # Edge case: if beats exceed audio length somehow, truncate the map
+        time_map = [t for t in time_map if t[0] < total_samples]
+        time_map.append((total_samples, time_map[-1][1])) # approximate last
+
+    # Stretch!
+    y_stretched = pyrb.timemap_stretch(y_full, sr_full, time_map)
+    
+    # 5. Export
+    print(f"Step 5: Exporting normalized audio to {output_file}...")
+    os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+    
+    # Writing directly to OGG with PySoundFile can cause segfaults on Mac.
+    # We will write to a temporary WAV and then use ffmpeg to encode it if needed.
+    is_wav = output_file.lower().endswith('.wav')
+    temp_wav = output_file if is_wav else output_file + '.tmp.wav'
+        
+    sf.write(temp_wav, y_stretched, sr_full, format='WAV', subtype='PCM_16')
+    
+    if not is_wav:
+        if shutil.which("ffmpeg") is None:
+            print(f"Warning: ffmpeg not found! Could not convert to {output_file}.")
+            print(f"Falling back to WAV format -> {temp_wav}")
+        else:
+            print(f"Compressing with ffmpeg -> {output_file}...")
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", temp_wav, 
+                    "-c:a", "libmp3lame", "-q:a", "2", # High quality VBR MP3
+                    output_file
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                os.remove(temp_wav)
+            except subprocess.CalledProcessError as e:
+                print(f"ffmpeg encoding failed: {e}")
+                print(f"Falling back to WAV format -> {temp_wav}")
+
+    # Cleanup temp demucs
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    print(f"Success! Audio strictly locked to {target_bpm} BPM.")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Warp fluctuating AI audio to a fixed BPM grid.")
+    parser.add_argument("input", help="Path to input audio (.wav/.mp3)")
+    parser.add_argument("output", help="Path to output audio (.ogg)")
+    parser.add_argument("--bpm", type=float, default=None, help="Target fixed BPM (default: intelligently rounded)")
+    
+    args = parser.parse_args()
+    warp_audio(args.input, args.output, args.bpm)
