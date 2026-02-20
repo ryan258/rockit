@@ -1,0 +1,30 @@
+# Python dependencies and environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+
+# MacOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Beat Sage & Input Files
+input/*
+!input/.gitkeep
+
+# Ragnarock Conversion Outputs
+output/*
+!output/.gitkeep
+*_Ragnarock/
+Beat Sage_*/
+AmenandAttack_*/
+
+# IDE / Editor folders
+.vscode/
+.idea/
+*.swp
