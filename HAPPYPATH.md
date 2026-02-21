@@ -14,33 +14,33 @@ This guide outlines the exact, end-to-end "Happy Path" to take a song generated 
 
 Suno's audio is organic and its tempo fluctuates constantly. Rhythm games require a mathematically perfect, static BPM grid, or else the notes will drift out of sync with the music.
 
-1. Move your downloaded Suno audio into the `rockit/input/` folder (e.g., `input/my_song.mp3`).
+1. Move your downloaded Suno audio files into the `rockit/input/to-warp/` folder.
 2. Open your terminal in the `rockit` project directory.
-3. Run the Warper script:
+3. Run the Batch Warper script:
    ```bash
-   ./warp.sh input/my_song.mp3 output/warped_song.mp3
+   ./batch_warp.sh
    ```
-   > _Note: This process uses AI to separate the drums and dynamically stretch the audio. It may take a couple of minutes depending on your computer's speed._
+   > _Note: This processes all files in `input/to-warp/` and saves the tempo-locked audio to `input/warped/`. This process uses AI to separate the drums and dynamically stretch the audio. It may take a couple of minutes per song depending on your computer's speed._
 
 ### Step 3: Generate the Core Beatmap (Beat Sage)
 
 We use Beat Sage to generate the core rhythm chart using its AI model trained on Beat Saber maps.
 
 1. Go to [Beat Sage](https://beatsage.com/).
-2. Upload the `output/warped_song.mp3` file that was just created.
+2. Upload the `.mp3` files from your `input/warped/` folder.
 3. Configure your preferences (Game Modes, Difficulties, Events).
 4. Click **Create Custom Level** and wait for the AI mapping process to finish.
-5. Click **Download**, and move the resulting `.zip` file into your `rockit/input/` folder.
+5. Click **Download**, and move the resulting `.zip` files into your `rockit/input/saged/` folder.
 
 ### Step 4: Convert to Ragnarock Level (Rockit Converter)
 
 Ragnarock uses a 4-lane system and has strict playability constraints compared to Beat Saber. We need to translate the map and cull unplayable notes (like 3-note chords).
 
-1. In your terminal, run the Converter script:
+1. In your terminal, run the Batch Converter script:
    ```bash
-   ./rockit.sh input/BeatSageDownload.zip
+   ./batch_rockit.sh
    ```
-2. The script will instantly unpack the zip, execute the translation matrix, apply speed limits, and emit a playable custom folder in `output/` (e.g., `output/MySong_Ragnarock/`).
+2. The script will instantly unpack all the zips in `input/saged/`, execute the translation matrix, apply speed limits, and emit playable custom folders in `output/`.
 
 ### Step 5: Transfer to Quest 2
 

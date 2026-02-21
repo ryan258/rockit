@@ -16,8 +16,9 @@ env/
 Icon
 
 # Beat Sage & Input Files
-input/*
-!input/.gitkeep
+input/**
+!input/**/
+!input/**/.gitkeep
 
 # Ragnarock Conversion Outputs
 output/*

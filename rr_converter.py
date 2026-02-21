@@ -1,3 +1,15 @@
+"""
+rr_converter.py - Rockit Beatmap Translation Engine
+
+This script converts AI-generated Beat Saber custom maps (from Beat Sage)
+into playable Ragnarock VR maps.
+
+It translates the 4x3 Beat Saber coordinate grid into the 1x4 Ragnarock
+drum lane format. Crucially, it filters out AI inconsistencies, stripping
+duplicates, limiting hammer strikes (to a maximum of 2 concurrent notes),
+and capping maximum note speed to prevent physically unplayable sequences.
+"""
+
 import os
 import json
 import tempfile
@@ -8,7 +20,16 @@ import re
 from pathlib import Path
 
 def extract_bs_data(zip_path, temp_dir):
-    """Extracts Beat Saber zip and returns info and the notes from highest difficulty."""
+    """
+    Extracts a Beat Sage zip archive and parses its metadata and beatmap.
+
+    Args:
+        zip_path (str): The path to the downloaded Beat Sage .zip file.
+        temp_dir (str): A temporary directory path to extract contents to.
+
+    Returns:
+        tuple: (info_dict, notes_list, base_directory_path)
+    """
     print(f"Extracting {zip_path}...")
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(temp_dir)
@@ -61,7 +82,21 @@ def extract_bs_data(zip_path, temp_dir):
     return info, notes, base_dir
 
 def convert_notes(bs_notes):
-    """Translates Beat Saber coordinates to Ragnarock drums."""
+    """
+    Translates Beat Saber spatial coordinates into Ragnarock drum lanes.
+
+    Beat Saber uses a 4-column (lineIndex 0-3) by 3-row grid.
+    Ragnarock uses 4 drums (lineIndex 0-3) on a single row.
+
+    This maps the columns 1:1 and homogenizes the note types/layers
+    to prevent Unity parser crashes in the Ragnarock engine.
+
+    Args:
+        bs_notes (list): Array of raw Beat Saber note dictionaries.
+
+    Returns:
+        list: Array of converted Ragnarock note dictionaries.
+    """
     rr_notes = []
     for note in bs_notes:
         # Extract time and lineIndex (column)
@@ -86,7 +121,23 @@ def convert_notes(bs_notes):
     return rr_notes
 
 def clean_chart(notes, min_time_delta=0.125, hammer_limit=2):
-    """Applies playability filters to the translated notes."""
+    """
+    Applies strict physical playability filters to the translated notes.
+
+    AI mappers often generate overlapping or impossibly fast note clusters.
+    This function enforces human constraints:
+    1. Deduplication: Removes identical notes sharing the same time and drum.
+    2. Hammer Limit: Drops notes if >2 appear concurrently (you only have 2 hammers).
+    3. Speed Cap: Prunes notes closer than `min_time_delta` to prevent exhaustion.
+
+    Args:
+        notes (list): The array of Ragnarock-formatted notes.
+        min_time_delta (float): Minimum beats allowed between distinct notes.
+        hammer_limit (int): Maximum concurrent notes allowed.
+
+    Returns:
+        list: The safe, playable array of notes.
+    """
     if not notes:
         return []
 
@@ -153,7 +204,19 @@ def clean_chart(notes, min_time_delta=0.125, hammer_limit=2):
     return final_notes
 
 def package_rr_song(temp_dir, output_dir, bs_info, rr_notes):
-    """Packages the Ragnarock song directory."""
+    """
+    Compiles the final Ragnarock custom song folder.
+
+    Constructs the exact strict JSON schema required by Ragnarock's C#
+    Unity parser, copies the cover art and audio, and saves them
+    into the designated output directory.
+
+    Args:
+        temp_dir (str): The extraction directory containing audio/art assets.
+        output_dir (str): The final destination folder for the Ragnarock song.
+        bs_info (dict): The original Beat Saber Info.dat metadata.
+        rr_notes (list): The final, filtered array of Ragnarock notes.
+    """
     print(f"Packaging to {output_dir}...")
     os.makedirs(output_dir, exist_ok=True)
     

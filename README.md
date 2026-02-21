@@ -13,18 +13,17 @@ During the conversion, Rockit heavily filters and cleans the AI-generated Beat S
 
 To convert a new song, follow these 3 steps:
 
-1. **(Automated)** Run the audio warper on your raw Suno `.wav` or `.mp3` to mathematically lock the fluctuating tempo to a fixed BPM grid:
+1. **(Automated)** Place your raw Suno `.wav` or `.mp3` files in `input/to-warp/` and run the batch warper to mathematically lock the fluctuating tempo to a fixed BPM grid:
    ```bash
-   ./warp.sh input/suno_song.wav output/locked_audio.mp3
+   ./batch_warp.sh
    ```
-2. **(Manual)** Upload the `output/locked_audio.mp3` file to [Beat Sage](https://beatsage.com/) to automatically generate the Beat Saber AI beatmap. Download the resulting `.zip` file.
-3. **(Automated)** Place the `.zip` file in the `input/` folder, and run the wrapper script:
-
-```bash
-./rockit.sh input/BeatSage_Map.zip
-```
-
-The script will instantly unzip the file, convert the notes, apply Ragnarock playability limits, and emit a playable custom folder in the `output/` directory (e.g., `output/SongName_Ragnarock/`).
+   _(Files will be processed and saved to `input/warped/`)_
+2. **(Manual)** Upload the files from `input/warped/` to [Beat Sage](https://beatsage.com/) to automatically generate the Beat Saber AI beatmaps. Download the resulting `.zip` files into the `input/saged/` folder.
+3. **(Automated)** Run the batch wrapper script:
+   ```bash
+   ./batch_rockit.sh
+   ```
+   The script will instantly unzip all files in `input/saged/`, convert the notes, apply Ragnarock playability limits, and emit playable custom folders in the `output/` directory (e.g., `output/songname_ragnarock/`).
 
 ### Transferring to Quest
 

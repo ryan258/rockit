@@ -81,6 +81,7 @@ Ragnarock requires a specific Info.dat structure to load the song properly. The 
 
 Moving forward, the pipeline can be enhanced with the following automation and polish features:
 
+- [x] **Batch Processing Workflow:** Introduced dedicated `input/to-warp/` and `input/saged/` staging directories and automated runner scripts (`batch_warp.sh` and `batch_rockit.sh`) to effortlessly process entire folders of audio and custom maps at once.
 - **[ ] Automated Quest Deployment (ADB):** Add a `--deploy` flag to `rockit.sh` that utilizes the Android Debug Bridge (`adb`) to automatically push the generated `_Ragnarock` folder directly to the connected Quest headset's `CustomSongs` directory, eliminating the manual drag-and-drop step.
 - **[ ] Multi-Difficulty Support:** Update `rr_converter.py` to parse and process multiple difficulty charts (e.g., Normal, Hard, Expert) from the Beat Sage `.zip` simultaneously. The script should output `Level1.json`, `Level2.json`, etc., within the same Ragnarock folder, allowing players to choose their difficulty in-game.
 - **[ ] Audio Loudness Normalization (LUFS):** Integrate a loudness normalization step into `warper.py`. The script will measure the LUFS (Loudness Units relative to Full Scale) of the isolated audio and automatically adjust the gain to match a standard target (e.g., -14 LUFS), ensuring all custom songs play at a consistent volume in VR.

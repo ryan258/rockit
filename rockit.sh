@@ -1,7 +1,22 @@
 #!/bin/bash
 
+# ==============================================================================
 # Rockit - Beat Sage to Ragnarock Converter Entry Point
-# Usage: ./rockit.sh <path_to_beatsaber_zip> [output_directory]
+# 
+# DESCRIPTION:
+# Acts as Phase 2 in the Rockit pipeline. It takes a compressed beatmap generated
+# by Beat Sage (.zip), unzips the payload, mathematically converts the spatial 
+# Beat Saber notes to 4-lane Ragnarock drums, applies physical playability 
+# filters (culling impossible AI spam), and generates a playable Unity standard
+# custom mapping folder.
+#
+# USAGE: 
+#   ./rockit.sh <path_to_beatsaber_zip> [output_directory]
+#
+# DEPENDENCIES:
+#   - Python 3
+#   - rr_converter.py
+# ==============================================================================
 
 if [ -z "$1" ]; then
     echo -e "\033[1;31mError: No input file provided.\033[0m"

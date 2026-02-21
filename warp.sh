@@ -1,7 +1,22 @@
 #!/bin/bash
 
+# ==============================================================================
 # Rockit - Audio Warping Preprocessor
-# Usage: ./warp.sh <path_to_raw_audio> <output_name>
+#
+# DESCRIPTION:
+# Acts as Phase 0 in the Rockit pipeline. Suno AI audio fluctuates organically
+# in tempo. Rhythm games require a mathematically perfect, static BPM grid.
+# This script uses AI (Demucs) to isolate the drums to prevent melodic 
+# interference, uses Librosa to detect the floating beat onsets, and uses
+# Rubberband to time-stretch the original master track onto a locked grid.
+#
+# USAGE: 
+#   ./warp.sh <path_to_raw_audio> <output_name>
+#
+# DEPENDENCIES:
+#   - uv (Python package manager)
+#   - ffmpeg, rubberband-cli
+# ==============================================================================
 
 if [ -z "$1" ] || [ -z "$2" ]; then
     echo -e "\033[1;31mError: Missing arguments.\033[0m"
