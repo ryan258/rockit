@@ -31,4 +31,5 @@ AmenandAttack_*/
 .vscode/
 .idea/
 *.swp
-.gitnexus
+.gitnexus/
+.claude/
