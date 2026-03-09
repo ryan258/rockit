@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **rockit** (19 symbols, 19 relationships, 0 execution flows).
+This project is indexed by GitNexus as **rockit** (21 symbols, 19 relationships, 0 execution flows).
 
 ## Always Start Here
 
