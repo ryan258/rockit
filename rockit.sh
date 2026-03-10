@@ -14,7 +14,7 @@
 #   ./rockit.sh <path_to_beatsaber_zip> [output_directory]
 #
 # DEPENDENCIES:
-#   - Python 3
+#   - uv (Python package manager)
 #   - rr_converter.py
 # ==============================================================================
 
@@ -31,9 +31,14 @@ fi
 
 ZIP_FILE="$1"
 
+if ! command -v uv >/dev/null 2>&1; then
+    echo -e "\033[1;31mError: uv is required to run the converter with project dependencies.\033[0m"
+    exit 1
+fi
+
 echo -e "\033[1;34mStarting Rockit Conversion Pipeline...\033[0m"
 
-python3 rr_converter.py "$ZIP_FILE"
+uv run python rr_converter.py "$ZIP_FILE"
 
 if [ $? -eq 0 ]; then
     echo -e "\033[1;32mConversion completed successfully!\033[0m"

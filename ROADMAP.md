@@ -7,10 +7,10 @@
 Moving forward, the pipeline can be enhanced with the following automation and polish features:
 
 - **[ ] Automated Quest Deployment (ADB):** Add a `--deploy` flag to `rockit.sh` that utilizes the Android Debug Bridge (`adb`) to automatically push the generated `_Ragnarock` folder directly to the connected Quest headset's `CustomSongs` directory, eliminating the manual drag-and-drop step.
-- **[ ] Multi-Difficulty Support:** Update `rr_converter.py` to parse and process multiple difficulty charts (e.g., Normal, Hard, Expert) from the Beat Sage `.zip` simultaneously. The script should output `Level1.json`, `Level2.json`, etc., within the same Ragnarock folder, allowing players to choose their difficulty in-game.
-- **[ ] Audio Loudness Normalization (LUFS):** Integrate a loudness normalization step into `warper.py`. The script will measure the LUFS (Loudness Units relative to Full Scale) of the isolated audio and automatically adjust the gain to match a standard target (e.g., -14 LUFS), ensuring all custom songs play at a consistent volume in VR.
-- **[ ] Automatic Song Duration:** Dynamically calculate the accurate song playback length in seconds during the conversion script instead of defaulting to an inaccurate placeholder (e.g., 5:00) so the in-game UI shows the true track time.
-- **[ ] Dynamic Difficulty Rating (NPS):** Calculate the overall Notes Per Second (NPS) for the generated chart and automatically assign it a relative difficulty level (1-10) within the `Info.dat`, providing a clear metric for players before they select the song in Ragnarock.
+- **[x] Multi-Difficulty Support:** `rr_converter.py` now parses and processes multiple difficulty charts (e.g., Normal, Hard, Expert) from the Beat Sage `.zip` simultaneously. The script outputs `Level1.json`, `Level2.json`, etc., within the same Ragnarock folder, allowing players to choose their difficulty in-game.
+- **[x] Audio Loudness Normalization (LUFS):** `warper.py` now measures and normalizes output loudness to a streaming-safe target (default `-14 LUFS / -1.0 dBTP`) so custom songs play at a more consistent volume in VR.
+- **[x] Automatic Song Duration:** `rr_converter.py` now measures the packaged audio file and writes the actual playback length in seconds into `info.dat` instead of using a placeholder duration.
+- **[x] Dynamic Difficulty Rating (NPS):** `rr_converter.py` now calculates average notes-per-second for each generated difficulty and maps that to a 1-10 `_difficultyRank` in `Info.dat` so the in-game difficulty display reflects chart density.
 
 ## **Phase 2: Advanced Charting & Generation**
 

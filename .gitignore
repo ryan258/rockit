@@ -1,4 +1,5 @@
 logs/
+concept/songs/*
 
 # Python dependencies and environments
 __pycache__/

@@ -25,6 +25,9 @@ fi
 
 echo -e "\033[1;34mStarting Batch Audio Warping...\033[0m"
 
+successes=0
+failures=0
+
 for file in "${files[@]}"; do
     if [ -f "$file" ]; then
         filename=$(basename -- "$file")
@@ -33,11 +36,21 @@ for file in "${files[@]}"; do
         output_file="$WARPED_DIR/${basename}.mp3"
         
         echo -e "\n\033[1;36mProcessing: $filename\033[0m"
-        if ! ./warp.sh "$file" "$output_file"; then
+        if ./warp.sh "$file" "$output_file"; then
+            successes=$((successes + 1))
+        else
+            failures=$((failures + 1))
             echo -e "\033[1;31mFailed: $filename\033[0m"
         fi
     fi
 done
 
-echo -e "\n\033[1;32mBatch warping complete!\033[0m"
+echo -e "\n\033[1;34mBatch warping summary:\033[0m $successes succeeded, $failures failed."
+
+if [ "$failures" -gt 0 ]; then
+    echo -e "\033[1;31mBatch warping finished with failures.\033[0m"
+    exit 1
+fi
+
+echo -e "\033[1;32mBatch warping complete!\033[0m"
 echo -e "You can now upload the files in \033[1;36m$WARPED_DIR/\033[0m to Beat Sage."

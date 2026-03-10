@@ -6,9 +6,10 @@
 # DESCRIPTION:
 # Acts as Phase 0 in the Rockit pipeline. Suno AI audio fluctuates organically
 # in tempo. Rhythm games require a mathematically perfect, static BPM grid.
-# This script uses AI (Demucs) to isolate the drums to prevent melodic 
-# interference, uses Librosa to detect the floating beat onsets, and uses
-# Rubberband to time-stretch the original master track onto a locked grid.
+# This script uses AI (Demucs) to isolate the drums to prevent melodic
+# interference, uses Librosa to detect the floating beat onsets, uses
+# Rubberband to time-stretch the original master track onto a locked grid,
+# and applies loudness mastering for consistent export levels.
 #
 # USAGE: 
 #   ./warp.sh <path_to_raw_audio> <output_name>
@@ -35,7 +36,7 @@ if [[ ! "$OUTPUT_FILE" == *.mp3 ]]; then
 fi
 
 echo -e "\033[1;34mStarting Rockit Audio Warping...\033[0m"
-echo -e "\033[1;33mThis process uses Demucs stem-separation and Librosa beat-tracking. It may take a few minutes.\033[0m"
+echo -e "\033[1;33mThis process uses Demucs stem-separation, Librosa beat-tracking, and ffmpeg mastering. It may take a few minutes.\033[0m"
 
 uv run python warper.py "$INPUT_FILE" "$OUTPUT_FILE"
 

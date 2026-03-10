@@ -1,41 +1,99 @@
 # Rockit - Beat Saber to Ragnarock Converter
 
-Rockit is a conversion tool designed to bridge the gap between AI-generated audio (like Suno) and VR rhythm games. It takes a raw audio file that has been warped to a fixed BPM, relies on Beat Sage to generate a 4-lane Beat Saber map, and converts that map into a perfectly playable Ragnarock VR level.
+Rockit is a conversion pipeline that takes raw AI-generated audio (like Suno) and turns it into a playable custom level for Ragnarock VR. It handles everything from tempo-locking the audio to packaging a fully-rated, multi-difficulty Ragnarock song folder.
 
-During the conversion, Rockit heavily filters and cleans the AI-generated Beat Saber chart to ensure it respects human playability constraints in Ragnarock (e.g., removing impossible drum rolls, >2 hammer strikes, and overlapping notes).
+## Pipeline Overview
 
-## Project Requirements
+```
+Suno audio  →  [warp]  →  Beat Sage  →  [rockit]  →  Ragnarock Quest
+```
 
-- **Python 3** (Standard library only; no external pypi dependencies needed for the core converter)
-- A DAW (like Ableton) or stems AI (like Fadr/Moises) to warp raw audio to a static BPM.
+1. **Warp** — locks the organic, fluctuating Suno tempo to a mathematically perfect static BPM grid and masters the output to a consistent loudness target.
+2. **Beat Sage** — (manual upload) generates one or more Beat Saber difficulty charts from the BPM-locked audio.
+3. **Rockit** — converts all Beat Sage difficulty charts into Ragnarock format, applies playability filters, calculates NPS-based difficulty ratings, and packages the final song folder.
 
-## Execution Flow
+## Requirements
 
-To convert a new song, follow these 3 steps:
+- **Python 3.11** managed via [`uv`](https://github.com/astral-sh/uv)
+- **ffmpeg** — required for loudness mastering and audio duration detection
+- **rubberband-cli** — required by `pyrubberband` for time-stretching
+- Python dependencies are declared in `pyproject.toml` and installed automatically by `uv run`
 
-1. **(Automated)** Place your raw Suno `.wav` or `.mp3` files in `input/to-warp/` and run the batch warper to mathematically lock the fluctuating tempo to a fixed BPM grid:
-   ```bash
-   ./batch_warp.sh
-   ```
-   _(Files will be processed and saved to `input/warped/`)_
-2. **(Manual)** Upload the files from `input/warped/` to [Beat Sage](https://beatsage.com/) to automatically generate the Beat Saber AI beatmaps. Download the resulting `.zip` files into the `input/saged/` folder.
-3. **(Automated)** Run the batch wrapper script:
-   ```bash
-   ./batch_rockit.sh
-   ```
-   The script will instantly unzip all files in `input/saged/`, convert the notes, apply Ragnarock playability limits, and emit playable custom folders in the `output/` directory (e.g., `output/songname_ragnarock/`).
+## Quick Start
 
-### Transferring to Quest
+```bash
+# Step 1: Lock tempo and master loudness
+./batch_warp.sh          # processes input/to-warp/ → input/warped/
 
-Move the generated folder to your Quest headset's custom song directory:
-`Android > data > com.wanadev.ragnarockquest > files > UE4Game > Ragnarock > Ragnarock > Saved > CustomSongs`
+# Step 2: Upload input/warped/*.mp3 to beatsage.com, download zips → input/saged/
 
-## How The Converter Works (`rr_converter.py`)
+# Step 3: Convert to Ragnarock
+./batch_rockit.sh        # processes input/saged/ → output/
+```
 
-The core engine performs a 1:1 mapping from Beat Saber's 4 columns (`_lineIndex`) to Ragnarock's 4 drums. During this process, it applies three major filters:
+Or run a single file:
 
-1. **Deduplication:** Strips strictly duplicate overlapping notes on the same beat and lane.
-2. **Hammer Limit:** Prevents >2 notes from occurring at the exact same beat by preserving only the outer bounds of a chord (since players only have 2 hammers).
-3. **Speed Cap:** Computes the time delta between note groups, culling notes clustered closer than `0.125` beats (1/32nd notes) to prevent physical exhaustion from AI-generated spam. This is adjustable via the `--min-delta` flag.
+```bash
+./warp.sh input/to-warp/song.mp3 input/warped/song.mp3
+./rockit.sh input/saged/song.zip
+```
 
-The script then automatically injects Ragnarock's needed configuration overrides (such as the `Midgard` environment setting) into the `Info.dat`.
+## Warper (`warper.py`)
+
+Processes raw audio into a BPM-locked, loudness-mastered file suitable for Beat Sage.
+
+**Steps:**
+1. **Stem separation (Demucs)** — isolates the drum track to remove melodic interference from beat detection.
+2. **Beat tracking (Librosa)** — detects precise beat onset times from the isolated drums.
+3. **Time-stretching (Rubberband)** — stretches the original stereo master between each detected beat onset, forcing the entire track onto a rigid BPM grid.
+4. **Loudness mastering (ffmpeg loudnorm)** — two-pass EBU R128 normalization to `-14 LUFS / -1.0 dBTP` so all songs play at a consistent volume in VR.
+
+**Options:**
+```
+./warp.sh <input> <output>
+
+warper.py flags:
+  --bpm FLOAT        Force a specific target BPM (default: auto-detected)
+  --lufs FLOAT       Integrated loudness target in LUFS (default: -14.0)
+  --true-peak FLOAT  True peak ceiling in dBTP (default: -1.0)
+```
+
+**Supported output formats:** `.mp3`, `.wav`, `.ogg`
+
+## Converter (`rr_converter.py`)
+
+Converts a Beat Sage `.zip` into a playable Ragnarock custom song folder.
+
+**What it does:**
+- Parses every difficulty chart in the Beat Sage zip (Normal, Hard, Expert, etc.) and converts all of them simultaneously, outputting `Level1.json`, `Level2.json`, etc.
+- Maps Beat Saber's 4-column grid (`_lineIndex`) 1:1 to Ragnarock's 4 drum lanes.
+- Applies three playability filters to each difficulty:
+  1. **Deduplication** — removes overlapping notes on the same beat and lane.
+  2. **Hammer limit** — caps concurrent notes at 2 per beat (one per hand), keeping only the outer-most lanes of any chord.
+  3. **Speed cap** — culls notes closer than `0.125` beats (1/32nd note) apart to prevent physically exhausting AI-generated spam.
+- Measures the actual audio duration and writes it to `info.dat` (replaces the old hardcoded 5:00 placeholder).
+- Calculates average Notes Per Second (NPS) for each difficulty and maps it to a 1–10 `_difficultyRank` in `info.dat` so the in-game difficulty display reflects chart density.
+- Copies audio and cover art assets into the output folder.
+
+**Options:**
+```
+./rockit.sh <beat_sage.zip>
+
+rr_converter.py flags:
+  --min-delta FLOAT  Minimum beat delta between note clusters (default: 0.125)
+  --hammer-limit INT Max concurrent notes per beat (default: 2)
+```
+
+## Transferring to Quest
+
+After conversion, copy the output folder to your headset:
+
+```
+Android/data/com.wanadev.ragnarockquest/files/CustomSongs/
+```
+
+Use Android File Transfer, SideQuest, or ADB to copy the folder. If `CustomSongs` doesn't exist, create it.
+
+## Concept Workflow
+
+The `concept/` directory holds album-level ideation and per-track Suno prompt files. See `concept/instructions.md` for the workflow and `concept/album-outline.md` for the current album.

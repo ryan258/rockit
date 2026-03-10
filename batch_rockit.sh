@@ -24,15 +24,28 @@ fi
 
 echo -e "\033[1;34mStarting Batch Rockit Conversion...\033[0m"
 
+successes=0
+failures=0
+
 for file in "$SAGED_DIR"/*.zip; do
     if [ -f "$file" ]; then
         filename=$(basename -- "$file")
         echo -e "\n\033[1;36mConverting: $filename\033[0m"
-        if ! ./rockit.sh "$file"; then
+        if ./rockit.sh "$file"; then
+            successes=$((successes + 1))
+        else
+            failures=$((failures + 1))
             echo -e "\033[1;31mFailed: $filename\033[0m"
         fi
     fi
 done
 
-echo -e "\n\033[1;32mBatch conversion complete!\033[0m"
+echo -e "\n\033[1;34mBatch conversion summary:\033[0m $successes succeeded, $failures failed."
+
+if [ "$failures" -gt 0 ]; then
+    echo -e "\033[1;31mBatch conversion finished with failures.\033[0m"
+    exit 1
+fi
+
+echo -e "\033[1;32mBatch conversion complete!\033[0m"
 echo -e "Check the \033[1;36moutput/\033[0m directory for your playable Ragnarock folders."

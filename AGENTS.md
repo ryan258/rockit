@@ -23,3 +23,9 @@ This project is indexed by GitNexus as **rockit** (21 symbols, 19 relationships,
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## Concept Workflow
+
+- For album ideation and Suno prompt generation, treat `concept/album-outline.md` as the canonical source.
+- Read `concept/instructions.md` before generating or editing `concept/songs/*.md`.
+- Create missing `concept/songs/*.md` files by default. Do not overwrite existing song files unless the user explicitly asks to regenerate or refresh them.

@@ -17,19 +17,127 @@ import zipfile
 import shutil
 import argparse
 import re
-from pathlib import Path
+import subprocess
+import sys
+import math
+
+import soundfile as sf
+
+DIFFICULTY_RANKS = {
+    "Easy": 1,
+    "Normal": 3,
+    "Hard": 5,
+    "Expert": 7,
+    "ExpertPlus": 9,
+}
+
+
+def _default_difficulty_rank(difficulty_name):
+    return DIFFICULTY_RANKS.get(difficulty_name or "", 5)
+
+
+def _difficulty_sort_key(beatmap_info):
+    difficulty_name = beatmap_info.get("_difficulty", "")
+    difficulty_rank = beatmap_info.get("_difficultyRank")
+    try:
+        normalized_rank = int(difficulty_rank)
+    except (TypeError, ValueError):
+        normalized_rank = _default_difficulty_rank(difficulty_name)
+
+    return (normalized_rank, difficulty_name, beatmap_info.get("_beatmapFilename", ""))
+
+
+def _extract_notes_from_beatmap(beatmap_data):
+    notes = beatmap_data.get("_notes", [])
+    if not notes and "colorNotes" in beatmap_data:
+        for note in beatmap_data["colorNotes"]:
+            notes.append({"_time": note.get("b"), "_lineIndex": note.get("x")})
+    return notes
+
+
+def detect_song_duration_seconds(audio_path):
+    """
+    Measures audio duration in seconds for the packaged song asset.
+
+    Uses libsndfile first for local audio parsing and falls back to ffprobe
+    when the container/codec is not directly supported.
+    """
+    try:
+        info = sf.info(audio_path)
+        duration = float(info.duration)
+        if math.isfinite(duration) and duration > 0:
+            return duration
+    except RuntimeError:
+        pass
+
+    if shutil.which("ffprobe") is None:
+        raise RuntimeError(
+            f"Could not determine duration for {audio_path}. soundfile failed and ffprobe is unavailable."
+        )
+
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            audio_path,
+        ],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ffprobe failed to measure duration for {audio_path}.")
+
+    try:
+        duration = float(result.stdout.strip())
+    except ValueError as exc:
+        raise RuntimeError(f"ffprobe returned an invalid duration for {audio_path}.") from exc
+
+    if not math.isfinite(duration) or duration <= 0:
+        raise RuntimeError(f"Measured invalid audio duration for {audio_path}: {duration}")
+
+    return duration
+
+
+def compute_average_nps(rr_notes, song_duration_seconds):
+    """
+    Calculates average notes-per-second over the full song duration.
+    """
+    if song_duration_seconds <= 0:
+        raise ValueError("Song duration must be positive to compute NPS.")
+
+    return len(rr_notes) / float(song_duration_seconds)
+
+
+def nps_to_difficulty_rank(nps):
+    """
+    Maps average NPS to a 1-10 in-game difficulty rank.
+
+    The 2x scale keeps low-density Ragnarock charts separated while still
+    capping extreme charts at 10.
+    """
+    return max(1, min(10, int(round(nps * 2.0))))
+
 
 def extract_bs_data(zip_path, temp_dir):
     """
-    Extracts a Beat Sage zip archive and parses its metadata and beatmap.
+    Extracts a Beat Sage zip archive and parses its metadata and beatmaps.
 
     Args:
         zip_path (str): The path to the downloaded Beat Sage .zip file.
         temp_dir (str): A temporary directory path to extract contents to.
 
     Returns:
-        tuple: (info_dict, notes_list, base_directory_path)
+        tuple: (info_dict, difficulty_sets, base_directory_path)
     """
+    zip_path = os.path.abspath(zip_path)
+    print(f"Input zip: {zip_path}")
     print(f"Extracting {zip_path}...")
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(temp_dir)
@@ -51,35 +159,63 @@ def extract_bs_data(zip_path, temp_dir):
     with open(info_path, 'r', encoding='utf-8') as f:
         info = json.load(f)
         
-    # Find the data file for the highest difficulty
-    # Beat Sage usually generates one difficulty, but let's grab the first available if multiple
     diff_sets = info.get("_difficultyBeatmapSets", [])
     if not diff_sets:
         raise ValueError("No beatmap sets found in Info.dat")
-        
-    # Just grab the first set and its first difficulty for now
-    diff_info = diff_sets[0].get("_difficultyBeatmaps", [])
-    if not diff_info:
+
+    difficulty_sets = []
+    selected_beatmaps = []
+
+    for diff_set in diff_sets:
+        characteristic_name = diff_set.get("_beatmapCharacteristicName", "Standard")
+        diff_infos = diff_set.get("_difficultyBeatmaps", [])
+        if not diff_infos:
+            continue
+
+        loaded_beatmaps = []
+        for diff_info in sorted(diff_infos, key=_difficulty_sort_key):
+            beatmap_filename = diff_info.get("_beatmapFilename")
+            if not beatmap_filename:
+                raise ValueError("Beatmap filename missing from difficulty metadata.")
+
+            dat_path = os.path.join(base_dir, beatmap_filename)
+            if not os.path.exists(dat_path):
+                raise FileNotFoundError(f"Beatmap data file {beatmap_filename} not found.")
+
+            with open(dat_path, 'r', encoding='utf-8') as f:
+                beatmap_data = json.load(f)
+
+            difficulty_name = diff_info.get("_difficulty") or os.path.splitext(beatmap_filename)[0]
+            difficulty_rank = diff_info.get("_difficultyRank")
+            try:
+                normalized_rank = int(difficulty_rank)
+            except (TypeError, ValueError):
+                normalized_rank = _default_difficulty_rank(difficulty_name)
+
+            loaded_beatmaps.append({
+                "difficulty": difficulty_name,
+                "difficulty_rank": normalized_rank,
+                "source_filename": beatmap_filename,
+                "note_jump_movement_speed": diff_info.get("_noteJumpMovementSpeed", 20),
+                "note_jump_start_beat_offset": diff_info.get("_noteJumpStartBeatOffset", 0),
+                "notes": _extract_notes_from_beatmap(beatmap_data),
+            })
+            selected_beatmaps.append(f"{characteristic_name}/{difficulty_name} -> {beatmap_filename}")
+
+        if loaded_beatmaps:
+            difficulty_sets.append({
+                "characteristic_name": characteristic_name,
+                "beatmaps": loaded_beatmaps,
+            })
+
+    if not difficulty_sets:
         raise ValueError("No difficulty beatmaps found.")
-        
-    beatmap_filename = diff_info[0].get("_beatmapFilename")
-    dat_path = os.path.join(base_dir, beatmap_filename)
-    
-    if not os.path.exists(dat_path):
-        raise FileNotFoundError(f"Beatmap data file {beatmap_filename} not found.")
-        
-    with open(dat_path, 'r', encoding='utf-8') as f:
-        beatmap_data = json.load(f)
-        
-    # Check if _notes or something else (v2 vs v3)
-    # v2 uses "_notes", v3 might use "colorNotes" or similar, Beat Sage generally outputs v2
-    notes = beatmap_data.get("_notes", []) 
-    if not notes and "colorNotes" in beatmap_data:
-        # v3 format
-        for n in beatmap_data["colorNotes"]:
-             notes.append({"_time": n.get("b"), "_lineIndex": n.get("x")})
-             
-    return info, notes, base_dir
+
+    print("Selected beatmaps:")
+    for selected in selected_beatmaps:
+        print(f" - {selected}")
+
+    return info, difficulty_sets, base_dir
 
 def convert_notes(bs_notes):
     """
@@ -144,8 +280,6 @@ def clean_chart(notes, min_time_delta=0.125, hammer_limit=2):
     # 1. Sort by time, then by lineIndex
     sorted_notes = sorted(notes, key=lambda x: (x["_time"], x["_lineIndex"]))
     
-    cleaned = []
-    
     # 2. Deduplication (same time, same lane)
     deduped = []
     for note in sorted_notes:
@@ -203,7 +337,72 @@ def clean_chart(notes, min_time_delta=0.125, hammer_limit=2):
     print(f"Chart Cleaned: Started with {len(notes)} notes -> Ended with {len(final_notes)} notes")
     return final_notes
 
-def package_rr_song(temp_dir, output_dir, bs_info, rr_notes):
+def build_rr_difficulty_sets(
+    bs_difficulty_sets,
+    min_time_delta=0.125,
+    hammer_limit=2,
+    song_duration_seconds=None,
+):
+    """
+    Converts and cleans every Beat Saber difficulty chart in extraction order.
+
+    Args:
+        bs_difficulty_sets (list): Parsed Beat Sage difficulty metadata and notes.
+        min_time_delta (float): Minimum beat delta between note clusters.
+        hammer_limit (int): Maximum concurrent notes allowed.
+
+    Returns:
+        list: Difficulty-set metadata with Ragnarock notes and LevelN.json filenames.
+    """
+    rr_difficulty_sets = []
+    level_number = 1
+
+    for diff_set in bs_difficulty_sets:
+        rr_beatmaps = []
+        for beatmap in diff_set["beatmaps"]:
+            raw_rr_notes = convert_notes(beatmap["notes"])
+            print(
+                "Converted notes before cleanup "
+                f"[{diff_set['characteristic_name']}/{beatmap['difficulty']}]: {len(raw_rr_notes)}"
+            )
+
+            clean_rr_notes = clean_chart(
+                raw_rr_notes,
+                min_time_delta=min_time_delta,
+                hammer_limit=hammer_limit,
+            )
+
+            average_nps = None
+            difficulty_rank = beatmap["difficulty_rank"]
+            if song_duration_seconds is not None:
+                average_nps = compute_average_nps(clean_rr_notes, song_duration_seconds)
+                difficulty_rank = nps_to_difficulty_rank(average_nps)
+
+            rr_beatmaps.append({
+                "difficulty": beatmap["difficulty"],
+                "difficulty_rank": difficulty_rank,
+                "note_jump_movement_speed": beatmap["note_jump_movement_speed"],
+                "note_jump_start_beat_offset": beatmap["note_jump_start_beat_offset"],
+                "output_filename": f"Level{level_number}.json",
+                "rr_notes": clean_rr_notes,
+                "average_nps": None if average_nps is None else round(average_nps, 2),
+                "notes_count": len(clean_rr_notes),
+            })
+            level_number += 1
+
+        if rr_beatmaps:
+            rr_difficulty_sets.append({
+                "characteristic_name": diff_set["characteristic_name"],
+                "beatmaps": rr_beatmaps,
+            })
+
+    if not rr_difficulty_sets:
+        raise ValueError("No converted difficulty charts were produced.")
+
+    return rr_difficulty_sets
+
+
+def package_rr_song(temp_dir, output_dir, bs_info, rr_difficulty_sets, song_duration_seconds=None):
     """
     Compiles the final Ragnarock custom song folder.
 
@@ -215,7 +414,8 @@ def package_rr_song(temp_dir, output_dir, bs_info, rr_notes):
         temp_dir (str): The extraction directory containing audio/art assets.
         output_dir (str): The final destination folder for the Ragnarock song.
         bs_info (dict): The original Beat Saber Info.dat metadata.
-        rr_notes (list): The final, filtered array of Ragnarock notes.
+        rr_difficulty_sets (list): Converted Ragnarock difficulty sets and notes.
+        song_duration_seconds (float, optional): Measured audio duration in seconds.
     """
     print(f"Packaging to {output_dir}...")
     os.makedirs(output_dir, exist_ok=True)
@@ -223,12 +423,21 @@ def package_rr_song(temp_dir, output_dir, bs_info, rr_notes):
     # Locate audio and cover
     audio_file = bs_info.get("_songFilename")
     cover_file = bs_info.get("_coverImageFilename")
-    
-    # Copy Assets
-    if audio_file and os.path.exists(os.path.join(temp_dir, audio_file)):
-        shutil.copy2(os.path.join(temp_dir, audio_file), os.path.join(output_dir, audio_file))
-    if cover_file and os.path.exists(os.path.join(temp_dir, cover_file)):
-        shutil.copy2(os.path.join(temp_dir, cover_file), os.path.join(output_dir, cover_file))
+
+    if not audio_file:
+        raise ValueError("Song audio filename missing from Beat Saber metadata.")
+
+    audio_source = os.path.join(temp_dir, audio_file)
+    if not os.path.exists(audio_source):
+        raise FileNotFoundError(f"Song audio file not found: {audio_source}")
+
+    shutil.copy2(audio_source, os.path.join(output_dir, audio_file))
+
+    if cover_file:
+        cover_source = os.path.join(temp_dir, cover_file)
+        if not os.path.exists(cover_source):
+            raise FileNotFoundError(f"Cover image file not found: {cover_source}")
+        shutil.copy2(cover_source, os.path.join(output_dir, cover_file))
         
     # the info.dat expects audio and cover to exist with same names, we'll keep the names.
     
@@ -237,6 +446,11 @@ def package_rr_song(temp_dir, output_dir, bs_info, rr_notes):
         clean_song_name = clean_song_name.replace(ext, "")
     clean_song_name = clean_song_name.strip()
     
+    if song_duration_seconds is None:
+        song_duration_seconds = detect_song_duration_seconds(audio_source)
+    display_duration_seconds = max(1, int(round(song_duration_seconds)))
+    print(f"Measured song duration: {song_duration_seconds:.2f}s")
+
     # Create Ragnarock info.dat (Lowercase, Version 1.0.0 required)
     rr_info = {
         "_version": "1.0.0",
@@ -250,65 +464,82 @@ def package_rr_song(temp_dir, output_dir, bs_info, rr_notes):
         "_shufflePeriod": 0.5,
         "_previewStartTime": int(bs_info.get("_previewStartTime", 12)),
         "_previewDuration": int(bs_info.get("_previewDuration", 10)),
-        "_songApproximativeDuration": 300, # Approx fallback if not known
+        "_songApproximativeDuration": display_duration_seconds,
         "_songFilename": audio_file,
-        "_coverImageFilename": cover_file,
+        "_coverImageFilename": cover_file or "",
         "_environmentName": "Midgard",
         "_songTimeOffset": 0,
-        "_difficultyBeatmapSets": [
-            {
-                "_beatmapCharacteristicName": "Standard",
-                "_difficultyBeatmaps": [
-                    {
-                        "_difficulty": "ExpertPlus",
-                        "_difficultyRank": 7,
-                        "_beatmapFilename": "ExpertPlusStandard.dat",
-                        "_noteJumpMovementSpeed": 20,
-                        "_noteJumpStartBeatOffset": 0
-                    }
-                ]
-            }
-        ]
+        "_difficultyBeatmapSets": []
     }
-    
+
+    total_levels = 0
+    for diff_set in rr_difficulty_sets:
+        packaged_beatmaps = []
+        for beatmap in diff_set["beatmaps"]:
+            if beatmap.get("average_nps") is not None:
+                print(
+                    f"Difficulty rating [{diff_set['characteristic_name']}/{beatmap['difficulty']}]: "
+                    f"{beatmap['average_nps']:.2f} NPS -> Rank {beatmap['difficulty_rank']}/10"
+                )
+
+            packaged_beatmaps.append({
+                "_difficulty": beatmap["difficulty"],
+                "_difficultyRank": int(beatmap["difficulty_rank"]),
+                "_beatmapFilename": beatmap["output_filename"],
+                "_noteJumpMovementSpeed": beatmap["note_jump_movement_speed"],
+                "_noteJumpStartBeatOffset": beatmap["note_jump_start_beat_offset"],
+            })
+
+            level_data = {
+                "_version": "1.0.0",
+                "_customData": {
+                    "_time": 0,
+                    "_BPMChanges": [],
+                    "_bookmarks": []
+                },
+                "_events": [],
+                "_notes": beatmap["rr_notes"],
+                "_obstacles": [],
+                "_waypoints": []
+            }
+
+            with open(os.path.join(output_dir, beatmap["output_filename"]), "w", encoding='utf-8') as f:
+                json.dump(level_data, f, separators=(',', ':'))
+
+            total_levels += 1
+
+        if packaged_beatmaps:
+            rr_info["_difficultyBeatmapSets"].append({
+                "_beatmapCharacteristicName": diff_set["characteristic_name"],
+                "_difficultyBeatmaps": packaged_beatmaps,
+            })
+
+    if not rr_info["_difficultyBeatmapSets"]:
+        raise ValueError("No Ragnarock difficulty charts available to package.")
+
     with open(os.path.join(output_dir, "info.dat"), "w", encoding='utf-8') as f:
         json.dump(rr_info, f, indent=2)
-        
-    # Create ExpertPlusStandard.dat
-    level_data = {
-        "_version": "1.0.0",
-        "_customData": {
-            "_time": 0,
-            "_BPMChanges": [],
-            "_bookmarks": []
-        },
-        "_events": [],
-        "_notes": rr_notes,
-        "_obstacles": [],
-        "_waypoints": []
-    }
-    
-    with open(os.path.join(output_dir, "ExpertPlusStandard.dat"), "w", encoding='utf-8') as f:
-        json.dump(level_data, f, separators=(',', ':')) # tighter json for notes
-        
-    print(f"Successfully packaged {rr_info.get('_songName')}!")
 
-def main():
+    print(f"Successfully packaged {rr_info.get('_songName')}!")
+    print(f"Difficulty files written: {total_levels}")
+    print(f"Output folder: {os.path.abspath(output_dir)}")
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Convert Beat Saber maps to Ragnarock with playability filters.")
     parser.add_argument("zip_path", help="Path to the Beat Sage output .zip file")
     parser.add_argument("--min-delta", type=float, default=0.125, help="Minimum beat delta between notes (Speed Cap, default 0.125)")
     parser.add_argument("--hammer-limit", type=int, default=2, help="Max notes per beat (default 2)")
     
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     
-    zip_path = args.zip_path
+    zip_path = os.path.abspath(args.zip_path)
     if not os.path.exists(zip_path):
-        print(f"Error: Could not find file {zip_path}")
-        return
+        print(f"Error: Could not find file {zip_path}", file=sys.stderr)
+        return 1
         
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
-            bs_info, bs_notes, base_dir = extract_bs_data(zip_path, temp_dir)
+            bs_info, bs_difficulty_sets, base_dir = extract_bs_data(zip_path, temp_dir)
             
             # Determine output folder name strictly as [song][artist][user] locally
             song_name = bs_info.get("_songName", "Unknown")
@@ -327,23 +558,28 @@ def main():
             
             output_dir = os.path.join(output_base_dir, safe_folder_name)
             
-            raw_rr_notes = convert_notes(bs_notes)
-            
-            clean_rr_notes = clean_chart(
-                raw_rr_notes, 
+            audio_source = os.path.join(base_dir, bs_info.get("_songFilename", ""))
+            song_duration_seconds = detect_song_duration_seconds(audio_source)
+
+            rr_difficulty_sets = build_rr_difficulty_sets(
+                bs_difficulty_sets,
                 min_time_delta=args.min_delta, 
-                hammer_limit=args.hammer_limit
+                hammer_limit=args.hammer_limit,
+                song_duration_seconds=song_duration_seconds,
             )
+
+            package_rr_song(
+                base_dir,
+                output_dir,
+                bs_info,
+                rr_difficulty_sets,
+                song_duration_seconds=song_duration_seconds,
+            )
+            return 0
             
-            package_rr_song(base_dir, output_dir, bs_info, clean_rr_notes)
-            
-        except Exception as e:
-            print(f"An error occurred during conversion: {e}")
+        except Exception as exc:
+            print(f"An error occurred during conversion: {exc}", file=sys.stderr)
+            return 1
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"Error: {e}")
-        import sys
-        sys.exit(1)
+    raise SystemExit(main())
