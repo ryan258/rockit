@@ -40,6 +40,10 @@ Suno's audio has an organic, fluctuating tempo. Rhythm games require a mathemati
    ```bash
    ./batch_rockit.sh
    ```
+   Or, for a single map with automatic Quest deployment:
+   ```bash
+   ./rockit.sh --deploy input/saged/song.zip
+   ```
 2. For each zip, Rockit will:
    - Convert every Beat Sage difficulty chart into a separate Ragnarock level file (`Level1.json`, `Level2.json`, etc.)
    - Apply playability filters (deduplication, hammer limit, speed cap) to each difficulty
@@ -50,6 +54,8 @@ Suno's audio has an organic, fluctuating tempo. Rhythm games require a mathemati
    Playable song folders are emitted to `output/`.
 
 ### Step 5: Transfer to Quest 2
+
+If you used `./rockit.sh --deploy`, Rockit already pushed the generated folder to the headset over `adb` and you can skip to Step 6.
 
 1. Connect your Meta Quest 2 via USB-C.
 2. Put the headset on, unlock it, and select **Allow** when prompted for data access.

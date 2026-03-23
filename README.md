@@ -17,6 +17,7 @@ Suno audio  →  [warp]  →  Beat Sage  →  [rockit]  →  Ragnarock Quest
 - **Python 3.11** managed via [`uv`](https://github.com/astral-sh/uv)
 - **ffmpeg** — required for loudness mastering and audio duration detection
 - **rubberband-cli** — required by `pyrubberband` for time-stretching
+- **adb** — optional, required only for automatic Quest deployment via `./rockit.sh --deploy`
 - Python dependencies are declared in `pyproject.toml` and installed automatically by `uv run`
 
 ## Quick Start
@@ -36,6 +37,7 @@ Or run a single file:
 ```bash
 ./warp.sh input/to-warp/song.mp3 input/warped/song.mp3
 ./rockit.sh input/saged/song.zip
+./rockit.sh --deploy input/saged/song.zip
 ```
 
 ## Warper (`warper.py`)
@@ -77,7 +79,7 @@ Converts a Beat Sage `.zip` into a playable Ragnarock custom song folder.
 
 **Options:**
 ```
-./rockit.sh <beat_sage.zip>
+./rockit.sh [--deploy] <beat_sage.zip>
 
 rr_converter.py flags:
   --min-delta FLOAT  Minimum beat delta between note clusters (default: 0.125)
@@ -86,13 +88,19 @@ rr_converter.py flags:
 
 ## Transferring to Quest
 
-After conversion, copy the output folder to your headset:
+To convert and immediately push the generated song folder to a connected Quest:
+
+```bash
+./rockit.sh --deploy input/saged/song.zip
+```
+
+Manual transfer still works too. Copy the output folder to your headset:
 
 ```
 Android/data/com.wanadev.ragnarockquest/files/CustomSongs/
 ```
 
-Use Android File Transfer, SideQuest, or ADB to copy the folder. If `CustomSongs` doesn't exist, create it.
+The `--deploy` flag uses `adb` to create `CustomSongs/` when needed and push the generated folder automatically. You can still use Android File Transfer or SideQuest if you prefer the manual flow.
 
 ## Concept Workflow
 
