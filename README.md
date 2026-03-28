@@ -60,7 +60,7 @@ warper.py flags:
   --true-peak FLOAT  True peak ceiling in dBTP (default: -1.0)
 ```
 
-**Supported output formats:** `.mp3`, `.wav`, `.ogg`
+**Output format:** `.mp3` (enforced by `warp.sh` for Beat Sage compatibility)
 
 ## Converter (`rr_converter.py`)
 

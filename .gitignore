@@ -1,5 +1,7 @@
 logs/
 concept/songs/*
+concept/archive
+concept
 
 # Python dependencies and environments
 __pycache__/
@@ -33,4 +35,5 @@ AmenandAttack_*/
 .idea/
 *.swp
 .gitnexus/
+.gitnexus.broken-*/
 .claude/

@@ -2,9 +2,7 @@
 
 **BLUF:** This project bridges raw, fluctuating AI audio (Suno) into a strict, playable VR rhythm game grid (Ragnarock). It translates Beat Saber grid coordinates (4x3) into Ragnarock drum lanes (1x4) while aggressively filtering out AI-generated note spam to conserve physical energy.
 
-## **Phase 1: Polish and Tooling Adjustments**
-
-Moving forward, the pipeline can be enhanced with the following automation and polish features:
+## **Phase 1: Polish and Tooling Adjustments** (Complete)
 
 - **[x] Automated Quest Deployment (ADB):** `rockit.sh` now accepts a `--deploy` flag that uses the Android Debug Bridge (`adb`) to create the Quest `CustomSongs` directory when needed and automatically push the generated Ragnarock folder to the connected headset.
 - **[x] Multi-Difficulty Support:** `rr_converter.py` now parses and processes multiple difficulty charts (e.g., Normal, Hard, Expert) from the Beat Sage `.zip` simultaneously. The script outputs `Level1.json`, `Level2.json`, etc., within the same Ragnarock folder, allowing players to choose their difficulty in-game.

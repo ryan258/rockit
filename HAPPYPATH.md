@@ -65,7 +65,7 @@ If you used `./rockit.sh --deploy`, Rockit already pushed the generated folder t
    Android / data / com.wanadev.ragnarockquest / files / CustomSongs
    ```
    _(Create `CustomSongs` if it doesn't exist.)_
-5. Drag the generated `MySong_Ragnarock/` folder from `output/` into `CustomSongs`.
+5. Drag the generated song folder from `output/` into `CustomSongs`.
 
 ### Step 6: Play!
 
