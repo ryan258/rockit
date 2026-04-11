@@ -21,7 +21,7 @@
 
 set -o pipefail
 
-QUEST_CUSTOMSONGS_PATH="/sdcard/Android/data/com.wanadev.ragnarockquest/files/CustomSongs"
+QUEST_CUSTOMSONGS_PATH="/sdcard/Android/data/com.wanadev.ragnarockquest/files/UE4Game/Ragnarock/Ragnarock/Saved/CustomSongs"
 
 print_usage() {
     echo -e "Usage: \033[1;36m./rockit.sh [--deploy] <path_to_beatsaber_zip>\033[0m"
